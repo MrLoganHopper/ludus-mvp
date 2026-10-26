@@ -311,7 +311,7 @@
     const clipEnd=r?.endSeconds??SIM_END_SECONDS;
     const videoId=r?.videoId||s.session?.video_id||DEMO_VIDEO_ID;
     const mediaUrl=SIMULATION_VIDEO_URL;
-    const subtitle=`${(s.session?.archetype?.name||'First-time player').toLowerCase().replace(/\b\w/g,c=>c.toUpperCase())}  /  FNAF  /  human footage demo`;
+    const subtitle=`${(s.session?.archetype?.name||'First-time player').toLowerCase().replace(/\b\w/g,c=>c.toUpperCase())}  /  FNAF  /  human footage simulation`;
     const embed=youtubeEmbed(videoId,{start:clipStart+Math.floor(s.playheadMs/1000),end:clipEnd,autoplay:true});
     const media=`${mediaUrl?`<video id="simulationVideo" class="simulation-board native-video" src="${esc(mediaUrl)}" autoplay muted playsinline preload="auto"></video>`:`<iframe id="simulationYouTube" class="simulation-board youtube-player" title="Markiplier playing Five Nights at Freddy's, sample video clip (not an AI agent)" src="${esc(embed)}" allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>`}`;
     const body=header('Simulation preview',subtitle)+`
@@ -322,7 +322,7 @@
       <div class="progress" id="progressBar"><div class="progress-fill" id="progressFill" style="width:${progress}%"></div><input type="range" aria-label="Scrub demonstration excerpt" min="0" max="${duration}" step="1000" value="${Math.min(s.playheadMs,duration)}" id="playhead" /></div>
       <div class="timeline-markers">${(r?.events||[]).map(e=>`<button data-time="${e.timestampMs}" title="Illustrative marker at ${timeStr(e.timestampMs)}" style="left:${e.timestampMs/duration*100}%" aria-label="Jump to example marker at ${timeStr(e.timestampMs)}"></button>`).join('')}</div>
       <div class="current-event" id="eventLabel">DEMO ANNOTATION &nbsp;/&nbsp; <strong>${esc(currentEvent?.label||'NO EVENT SELECTED')}</strong></div>
-      <div class="demo-caption" id="playerFallback">SOURCE: RECORDED HUMAN GAMEPLAY &nbsp; · &nbsp; MARKERS AND REPORT ARE ILLUSTRATIVE. <a target="_blank" rel="noopener noreferrer" href="${esc(mediaUrl||'https://www.youtube.com/watch?v='+videoId)}">OPEN ORIGINAL GAME ↗</a></div>
+      <div class="demo-caption" id="playerFallback">SIMULATED HUMAN GAMEPLAY &nbsp; · &nbsp; MARKERS AND REPORT ARE ILLUSTRATIVE. <a target="_blank" rel="noopener noreferrer" href="${esc(mediaUrl||'https://www.youtube.com/watch?v='+videoId)}">OPEN ORIGINAL GAME ↗</a></div>
       </section>`;
     renderShell(body,3);updateReplayFrame();initSimulationPlayer();
   }
