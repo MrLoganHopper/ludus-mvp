@@ -10,6 +10,10 @@ test('all interactive pages still expose game, archetype, replay and report acti
   }
   assert.match(js,/function setReplayPlaying\(/);
   assert.match(js,/autoplay:true/);
+  assert.match(js,/youtubeEmbed\(s\.videoId,\{start:0,end:75,autoplay:true\}\)/);
+  assert.match(js,/controls:'0'/);
+  assert.match(js,/modestbranding:'1'/);
+  assert.match(js,/iv_load_policy:'3'/);
   assert.match(js,/SIM_START_SECONDS=240, SIM_END_SECONDS=405/);
   assert.match(js,/id="connectVideoForm"/);
   assert.match(js,/function seekTo\(/);

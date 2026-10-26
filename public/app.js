@@ -11,7 +11,8 @@
   let routeVersion = 0;
   let toastTimer;
   const DEMO_VIDEO_ID='iOztnsBPrAA';
-  const DEFAULT_VIDEO_URL='https://www.youtube.com/watch?v='+DEMO_VIDEO_ID;
+  const DEFAULT_VIDEO_URL="https://game-videos-mvp.s3.us-west-1.amazonaws.com/Five+Nights+at+Freddy's+_+Full+Game+Walkthrough+_+No+Commentary_20_116.mp4";
+  const SIMULATION_VIDEO_URL="https://game-videos-mvp.s3.us-west-1.amazonaws.com/Five+Nights+at+Freddy's+Simulation.mp4";
   const SIM_START_SECONDS=240, SIM_END_SECONDS=405;
   let youtubePlayer=null, youtubeScriptPromise=null, youtubeInstanceToken=0;
   // Only allow YouTube player URLs, never arbitrary iframe markup or third-party origins.
@@ -25,8 +26,16 @@
       return /^[a-zA-Z0-9_-]{11}$/.test(id||'')?id:null;
     }catch{return null;}
   }
+  function directVideoUrl(raw){
+    if(typeof raw!=='string'||raw.length>2048)return null;
+    try{
+      const u=new URL(raw.trim());
+      return u.protocol==='https:'&&/\.(mp4|webm|ogg|m3u8)(?:$|[?#])/i.test(u.pathname+u.search)?u.href:null;
+    }catch{return null;}
+  }
+  function isDirectVideo(value){return Boolean(directVideoUrl(value));}
   function youtubeEmbed(videoId,{start=0,end=0,autoplay=false}={}){
-    const args=new URLSearchParams({playsinline:'1',controls:'1',rel:'0',start:String(start),autoplay:autoplay?'1':'0',mute:autoplay?'1':'0',enablejsapi:'1',origin:location.origin});
+    const args=new URLSearchParams({playsinline:'1',controls:'0',rel:'0',modestbranding:'1',iv_load_policy:'3',fs:'0',disablekb:'1',start:String(start),autoplay:autoplay?'1':'0',mute:autoplay?'1':'0',enablejsapi:'1',origin:location.origin});
     if(end)args.set('end',String(end));
     return `https://www.youtube.com/embed/${videoId}?${args}`;
   }
@@ -44,6 +53,15 @@
     return youtubeScriptPromise;
   }
   function initSimulationPlayer(){
+    const native=document.querySelector('#simulationVideo');
+    if(native){
+      youtubePlayer=native;
+      native.addEventListener('loadedmetadata',()=>{native.currentTime=s.playheadMs/1000;void native.play().catch(()=>notice('Autoplay was blocked. Press PLAY to start the clip.'));},{once:true});
+      native.addEventListener('play',()=>setReplayPlaying(true));
+      native.addEventListener('pause',()=>setReplayPlaying(false));
+      native.addEventListener('ended',()=>{s.playheadMs=s.replay?.run?.durationMs||0;setReplayPlaying(false);updateReplayFrame();});
+      return;
+    }
     const iframe=document.querySelector('#simulationYouTube');if(!iframe)return;
     const ticket=++youtubeInstanceToken;
     loadYouTubeApi().then(YT=>{
@@ -68,6 +86,10 @@
     }).catch(()=>{const feedback=document.querySelector('#playerFallback');if(feedback)feedback.textContent='YouTube controls are unavailable in this browser. Use the player controls or open the original video.';});
   }
   function toggleVideoPlayback(){
+    if(youtubePlayer?.tagName==='VIDEO'){
+      if(s.playheadMs >= (s.replay?.run?.durationMs||Infinity)){youtubePlayer.currentTime=0;s.playheadMs=0;}
+      if(s.playing)youtubePlayer.pause();else void youtubePlayer.play();return;
+    }
     if(!youtubePlayer||typeof youtubePlayer.playVideo!=='function'){
       notice('Use the controls inside the YouTube video until the player API is ready.');return;
     }
@@ -77,7 +99,7 @@
     }catch{notice('Use the controls inside the YouTube video.');}
   }
   const s = {
-    page: 'games', gameId: 'fnaf-video', videoId: sessionStorage.getItem('ludus_youtube_id') || DEMO_VIDEO_ID, videoUrl: sessionStorage.getItem('ludus_youtube_url') || DEFAULT_VIDEO_URL, games: [], game: null, archetypes: [], archetypeId: sessionStorage.getItem('ludus_archetype') || 'first-time',
+    page: 'games', gameId: 'fnaf-video', videoId: sessionStorage.getItem('ludus_youtube_id') || DEFAULT_VIDEO_URL, videoUrl: sessionStorage.getItem('ludus_youtube_url') || DEFAULT_VIDEO_URL, games: [], game: null, archetypes: [], archetypeId: sessionStorage.getItem('ludus_archetype') || 'first-time',
     session: null, replay: null, report: null, section: 'worked', runNumber: 1, playheadMs: 0, playing: false,
     lastFrameTime: 0, rate: 1, modal: false, message: '', error: null, busy: false, navToken: 0, gamePlaying: false
   };
@@ -202,7 +224,8 @@
   function seekTo(ms,{feedback=true}={}) {
     if(!s.replay?.run)return;
     s.playheadMs=Math.max(0,Math.min(s.replay.run.durationMs,ms));
-    if(youtubePlayer?.seekTo){try{youtubePlayer.seekTo(SIM_START_SECONDS+s.playheadMs/1000,true);youtubePlayer.pauseVideo();}catch{}}
+    if(youtubePlayer?.tagName==='VIDEO'){try{youtubePlayer.currentTime=s.playheadMs/1000;youtubePlayer.pause();}catch{}}
+    else if(youtubePlayer?.seekTo){try{youtubePlayer.seekTo(SIM_START_SECONDS+s.playheadMs/1000,true);youtubePlayer.pauseVideo();}catch{}}
     setReplayPlaying(false);
     updateReplayFrame();
     if(feedback)animateFeedback();
@@ -259,19 +282,20 @@
   }
   function header(title,subtitle,extras=''){return `<header class="head"><h1>${esc(title)}</h1><div class="head-row"><div class="head-sub">${esc(subtitle)}</div>${extras}</div></header>`;}
   function renderGame(){
-    const valid=Boolean(s.videoId);
-    const preview=valid?`<iframe id="previewYouTube" title="Connected Five Nights at Freddy's human gameplay video preview" src="${esc(youtubeEmbed(s.videoId,{start:0,end:75}))}" allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>`
+    const mediaUrl=isDirectVideo(s.videoUrl);
+    const valid=Boolean(s.videoId)&&Boolean(s.videoUrl);
+    const preview=valid?(mediaUrl?`<video id="previewVideo" class="native-video" src="${esc(s.videoUrl)}" autoplay muted playsinline preload="auto"></video>`:`<iframe id="previewYouTube" title="Connected Five Nights at Freddy's human gameplay video preview" src="${esc(youtubeEmbed(s.videoId,{start:0,end:75,autoplay:true}))}" allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>` )
       :'<div class="video-empty">PASTE A YOUTUBE VIDEO LINK ABOVE TO CONNECT YOUR GAME</div>';
-    const body=header('Connect your game','Paste a YouTube gameplay-video link to create a demo connection.')+`
+    const body=header('Connect your game','Paste your game link to create a game connection.')+`
       <form id="connectVideoForm" class="connect-video-form" aria-label="Connect a gameplay video">
-        <label for="gameUrlInput">GAME VIDEO URL &nbsp; / &nbsp; YOUTUBE</label>
-        <div class="connect-video-controls"><input id="gameUrlInput" type="url" name="gameUrl" placeholder="https://www.youtube.com/watch?v=..." value="${esc(s.videoUrl)}" autocomplete="url" required />
+        <label for="gameUrlInput">GAME URL &nbsp; / &nbsp; ITCH, GITHUB, OR DIRECT LINK</label>
+        <div class="connect-video-controls"><input id="gameUrlInput" type="url" name="gameUrl" placeholder="https://.../video.mp4" value="${esc(s.videoUrl)}" autocomplete="url" required />
         <button type="submit" class="connect-video-button">CONNECT ↗</button></div>
-        <div id="connectFeedback" class="connect-feedback" role="status">${valid?'● VIDEO CONNECTED / DEMO SOURCE':'ENTER A VALID YOUTUBE LINK TO CONTINUE'}</div>
+        <div id="connectFeedback" class="connect-feedback" role="status">${valid?'● GAME CONNECTED':'ENTER A VALID GAME LINK TO CONTINUE'}</div>
       </form>
       <section class="preview-card" aria-label="Connected game footage"><div class="game-viewport youtube-viewport">${preview}</div>
       <div class="preview-meta"><div class="game-title">FIVE NIGHTS AT FREDDY'S <span>&nbsp;/&nbsp; GAMEPLAY VIDEO</span></div>
-      <div class="game-controls"><a class="link-line" href="${esc('https://www.youtube.com/watch?v='+s.videoId)}" target="_blank" rel="noopener noreferrer">OPEN ORIGINAL VIDEO ↗</a><span class="demo-caption">RECORDED HUMAN GAMEPLAY &nbsp; / &nbsp; NOT AI</span></div></div></section>`;
+      <div class="game-controls"><a class="link-line" href="${esc(s.videoUrl)}" target="_blank" rel="noopener noreferrer">OPEN ORIGINAL VIDEO ↗</a><span class="demo-caption">RECORDED HUMAN GAMEPLAY &nbsp; / &nbsp; NOT AI</span></div></div></section>`;
     renderShell(body,1);
   }
   function renderArchetypes(){
@@ -286,17 +310,19 @@
     const clipStart=r?.startSeconds??SIM_START_SECONDS;
     const clipEnd=r?.endSeconds??SIM_END_SECONDS;
     const videoId=r?.videoId||s.session?.video_id||DEMO_VIDEO_ID;
+    const mediaUrl=SIMULATION_VIDEO_URL;
     const subtitle=`${(s.session?.archetype?.name||'First-time player').toLowerCase().replace(/\b\w/g,c=>c.toUpperCase())}  /  FNAF  /  human footage demo`;
     const embed=youtubeEmbed(videoId,{start:clipStart+Math.floor(s.playheadMs/1000),end:clipEnd,autoplay:true});
+    const media=`${mediaUrl?`<video id="simulationVideo" class="simulation-board native-video" src="${esc(mediaUrl)}" autoplay muted playsinline preload="auto"></video>`:`<iframe id="simulationYouTube" class="simulation-board youtube-player" title="Markiplier playing Five Nights at Freddy's, sample video clip (not an AI agent)" src="${esc(embed)}" allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>`}`;
     const body=header('Simulation preview',subtitle)+`
       <section aria-label="Human recorded gameplay, illustrative simulated playtest">
       <div class="sim-header"><div class="status"><span class="status-dot"></span> HUMAN FOOTAGE &nbsp; / &nbsp; DEMO REPLAY</div><div class="sim-run-info">CLIP 01 / 01 &nbsp; · &nbsp; <span id="viewerTime">${timeStr(s.playheadMs)}</span> / ${timeStr(duration)}</div></div>
-      <div class="replay-stage"><iframe id="simulationYouTube" class="simulation-board youtube-player" title="Markiplier playing Five Nights at Freddy's, sample video clip (not an AI agent)" src="${esc(embed)}" allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe></div>
+      <div class="replay-stage">${media}</div>
       <div class="transport"><button data-action="jump-prev" title="Go to previous marker" aria-label="Previous demonstration marker">◀◀</button><button class="playpause" data-action="playpause" id="playPause" aria-pressed="false">▶ PLAY</button><button data-action="jump-next" title="Next demonstration marker" aria-label="Next demonstration marker">▶▶</button><div class="right-transport"><span>EXCERPT ${timeStr(clipStart*1000)}–${timeStr(clipEnd*1000)}</span><label for="speedSelect">SPEED</label><select id="speedSelect" aria-label="Replay speed"><option value="0.5">0.5x</option><option value="1" selected>1x</option><option value="2">2x</option></select></div></div>
       <div class="progress" id="progressBar"><div class="progress-fill" id="progressFill" style="width:${progress}%"></div><input type="range" aria-label="Scrub demonstration excerpt" min="0" max="${duration}" step="1000" value="${Math.min(s.playheadMs,duration)}" id="playhead" /></div>
       <div class="timeline-markers">${(r?.events||[]).map(e=>`<button data-time="${e.timestampMs}" title="Illustrative marker at ${timeStr(e.timestampMs)}" style="left:${e.timestampMs/duration*100}%" aria-label="Jump to example marker at ${timeStr(e.timestampMs)}"></button>`).join('')}</div>
       <div class="current-event" id="eventLabel">DEMO ANNOTATION &nbsp;/&nbsp; <strong>${esc(currentEvent?.label||'NO EVENT SELECTED')}</strong></div>
-      <div class="demo-caption" id="playerFallback">SOURCE: MARKIPLIER / YOUTUBE &nbsp; · &nbsp; RECORDED HUMAN GAMEPLAY, NOT AN AUTONOMOUS AGENT. MARKERS AND REPORT ARE ILLUSTRATIVE. <a target="_blank" rel="noopener noreferrer" href="${esc('https://www.youtube.com/watch?v='+videoId)}">OPEN ORIGINAL VIDEO ↗</a></div>
+      <div class="demo-caption" id="playerFallback">SOURCE: RECORDED HUMAN GAMEPLAY &nbsp; · &nbsp; MARKERS AND REPORT ARE ILLUSTRATIVE. <a target="_blank" rel="noopener noreferrer" href="${esc(mediaUrl||'https://www.youtube.com/watch?v='+videoId)}">OPEN ORIGINAL GAME ↗</a></div>
       </section>`;
     renderShell(body,3);updateReplayFrame();initSimulationPlayer();
   }
@@ -330,9 +356,10 @@
   }
   function connectVideo(){
     const input=document.querySelector('#gameUrlInput');const raw=input?.value?.trim()||'';const id=youtubeId(raw);
-    if(!id){const fb=document.querySelector('#connectFeedback');if(fb){fb.textContent='INVALID LINK: PLEASE ENTER A YOUTUBE WATCH, SHORTS OR YOUTU.BE URL';fb.classList.add('invalid');}input?.setAttribute('aria-invalid','true');input?.focus();return;}
-    s.videoId=id;s.videoUrl=`https://www.youtube.com/watch?v=${id}`;
-    sessionStorage.setItem('ludus_youtube_id',id);sessionStorage.setItem('ludus_youtube_url',s.videoUrl);
+    const direct=directVideoUrl(raw);
+    if(!id&&!direct){const fb=document.querySelector('#connectFeedback');if(fb){fb.textContent='INVALID LINK: ENTER A YOUTUBE LINK OR DIRECT MP4/WEBM/HLS URL';fb.classList.add('invalid');}input?.setAttribute('aria-invalid','true');input?.focus();return;}
+    s.videoId=id||direct;s.videoUrl=id?`https://www.youtube.com/watch?v=${id}`:direct;
+    sessionStorage.setItem('ludus_youtube_id',s.videoId);sessionStorage.setItem('ludus_youtube_url',s.videoUrl);
     input?.removeAttribute('aria-invalid');renderGame();notice('Gameplay video connected. Select an archetype to continue.');
   }
   document.addEventListener('submit',e=>{if(e.target.id==='connectVideoForm'){e.preventDefault();connectVideo();}});
@@ -361,7 +388,7 @@
       }
       if(match){
         s.page=match[2]==='view'?'viewer':'report';const data=await request(`${API}/playtests/${match[1]}`);if(token!==routeVersion)return;
-        s.session=data.session;s.archetypeId=s.session.archetype_id;s.gameId=s.session.game_id;s.videoId=s.session.video_id||DEMO_VIDEO_ID;s.videoUrl='https://www.youtube.com/watch?v='+s.videoId;
+        s.session=data.session;s.archetypeId=s.session.archetype_id;s.gameId=s.session.game_id;s.videoId=s.session.video_id||DEMO_VIDEO_ID;s.videoUrl=isDirectVideo(s.videoId)?s.videoId:'https://www.youtube.com/watch?v='+s.videoId;
         if(s.page==='viewer'){
           let rNum=1;
           s.runNumber=rNum;const replayData=await request(`${API}/playtests/${match[1]}/replay?run=${rNum}`);if(token!==routeVersion)return;
@@ -413,7 +440,7 @@
       case 'about':notice('LUDUS demo: YouTube human gameplay clip + sample report. No trained AI agent or archetype simulation is running.');break;
     }
   });
-  document.addEventListener('change',e=>{if(e.target.id==='speedSelect'){s.rate=Number(e.target.value);try{youtubePlayer?.setPlaybackRate(s.rate);}catch{}}});
+  document.addEventListener('change',e=>{if(e.target.id==='speedSelect'){s.rate=Number(e.target.value);try{if(youtubePlayer?.tagName==='VIDEO')youtubePlayer.playbackRate=s.rate;else youtubePlayer?.setPlaybackRate(s.rate);}catch{}}});
   document.addEventListener('input',e=>{if(e.target.id==='playhead'&&s.replay)seekTo(Number(e.target.value),{feedback:false});});
   // Small tactile response on controls. The ripple is clipped and never changes the layout.
   document.addEventListener('pointerdown',e=>{
@@ -441,13 +468,19 @@
   });
   window.addEventListener('popstate',()=>{void navigate(location.href,{pop:true});});
   function animationFrame(ts){
-    if(s.page==='viewer'&&s.replay?.run&&youtubePlayer?.getCurrentTime){
+    if(s.page==='viewer'&&s.replay?.run&&youtubePlayer){
       try{
-        const ytTime=youtubePlayer.getCurrentTime();
+        const ytTime=youtubePlayer.tagName==='VIDEO'
+          ? youtubePlayer.currentTime
+          : youtubePlayer.getCurrentTime();
         if(Number.isFinite(ytTime)&&ytTime>0){
-          s.playheadMs=Math.min(s.replay.run.durationMs,Math.max(0,(ytTime-SIM_START_SECONDS)*1000));
+          const mediaStart=youtubePlayer.tagName==='VIDEO'?0:SIM_START_SECONDS;
+          s.playheadMs=Math.min(s.replay.run.durationMs,Math.max(0,(ytTime-mediaStart)*1000));
           updateReplayFrame();
-          if(s.playheadMs>=s.replay.run.durationMs){youtubePlayer.pauseVideo();setReplayPlaying(false);}
+          if(s.playheadMs>=s.replay.run.durationMs){
+            if(youtubePlayer.tagName==='VIDEO')youtubePlayer.pause();else youtubePlayer.pauseVideo();
+            setReplayPlaying(false);
+          }
         }
       }catch{}
     }

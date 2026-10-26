@@ -14,6 +14,7 @@ const mime={'.html':'text/html; charset=utf-8','.js':'application/javascript; ch
 function json(res,status,data){res.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'});res.end(JSON.stringify(data));}
 function pageError(res,status,message){json(res,status,{error:message});}
 function isSessionId(str){return /^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i.test(str);}
+function directVideoUrl(raw){if(typeof raw!=='string'||raw.length>2048)return null;try{const u=new URL(raw.trim());return u.protocol==='https:'&&/\.(mp4|webm|ogg|m3u8)(?:$|[?#])/i.test(u.pathname+u.search)?u.href:null;}catch{return null;}}
 async function bodyJson(req){let b='';for await(const chunk of req){b+=chunk;if(b.length>8192)throw new Error('Request body too large');}try{return JSON.parse(b||'{}');}catch{throw new Error('Invalid JSON body');}}
 function optionalGame(){const title=process.env.ITCH_GAME_TITLE,embed=process.env.ITCH_EMBED_URL,external=process.env.ITCH_EXTERNAL_URL;if(!title||(!embed&&!external))return null;const safeEmbed=embed&&/^https:\/\//.test(embed)?embed:null;const safeExternal=external&&/^https:\/\//.test(external)?external:null;return {id:'itch-example',name:title,subtitle:'HTML5 / Itch.io',genre:'Indie',platform:'Browser',description:'An externally hosted, independently playable game.',sourceType:'itch_html5',embedUrl:safeEmbed,externalUrl:safeExternal,playable:Boolean(safeEmbed||safeExternal),fixtureAvailable:false};}
 async function api(req,res,pathname,search){
@@ -25,9 +26,9 @@ async function api(req,res,pathname,search){
   if(req.method==='POST'&&pathname==='/api/playtests'){
    if(!req.headers['content-type']?.startsWith('application/json'))return pageError(res,415,'Expected application/json');
    const v=await bodyJson(req);
-   if(v.gameId!==GAME.id)return pageError(res,422,'Only connected FNAF/YouTube video demos are supported');
-   const videoId=youtubeVideoId(v.gameUrl||'') || (typeof v.videoId==='string' && /^[a-zA-Z0-9_-]{11}$/.test(v.videoId)?v.videoId:null);
-   if(!videoId)return pageError(res,422,'Connect a valid YouTube video link first');
+   if(v.gameId!==GAME.id)return pageError(res,422,'Only connected FNAF video demos are supported');
+   const videoId=youtubeVideoId(v.gameUrl||'') || directVideoUrl(v.gameUrl||'') || (typeof v.videoId==='string' && /^[a-zA-Z0-9_-]{11}$/.test(v.videoId)?v.videoId:null);
+   if(!videoId)return pageError(res,422,'Connect a valid YouTube link or direct MP4/WEBM/HLS video URL first');
    if(!ARCHETYPES.some(a=>a.id===v.archetypeId))return pageError(res,422,'Choose a supported archetype');
    if(v.mode&&v.mode!=='demo')return pageError(res,422,'This MVP supports prepared demo playback only');
    if(v.runCount!=null&&v.runCount!==1)return pageError(res,422,'The prepared demonstration contains one video clip');

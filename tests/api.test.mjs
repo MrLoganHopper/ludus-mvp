@@ -29,6 +29,9 @@ test('HTTP workflow: game -> archetypes -> create -> replay -> report -> persist
     assert.ok((await fs.readFile(path.join(temp,'sessions.json'),'utf8')).includes(created.sessionId));
     const second=await (await fetch(`${base}/api/playtests`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({gameId:'fnaf-video',gameUrl:'https://youtu.be/Zz000000000',archetypeId:'expert',runCount:1,mode:'demo'})})).json();assert.ok(second.sessionId);
     const secondReplay=await (await fetch(`${base}/api/playtests/${second.sessionId}/replay`)).json();assert.equal(secondReplay.run.videoId,'Zz000000000');
+    const directUrl='https://game-videos-mvp.s3.us-west-1.amazonaws.com/Five+Nights+at+Freddy%27s+_+Full+Game+Walkthrough+_+No+Commentary_20_116.mp4';
+    const direct=await (await fetch(`${base}/api/playtests`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({gameId:'fnaf-video',gameUrl:directUrl,archetypeId:'first-time',runCount:1,mode:'demo'})})).json();
+    assert.ok(direct.sessionId);
     const rejected=await fetch(`${base}/api/playtests`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({gameId:'fnaf-video',gameUrl:'https://evil.com/watch?v=iOztnsBPrAA',archetypeId:'expert',runCount:1})});assert.equal(rejected.status,422);
   }finally{proc.kill('SIGTERM');await fs.rm(temp,{recursive:true,force:true});}
 });
