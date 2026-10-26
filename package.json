@@ -1,0 +1,15 @@
+{
+  "name": "ludus-playtest-mvp",
+  "version": "0.4.0",
+  "private": true,
+  "type": "module",
+  "description": "LUDUS playtesting product demonstration, with YouTube clip playback and persistence",
+  "scripts": {
+    "start": "node server.mjs",
+    "dev": "node --watch server.mjs",
+    "test": "node --test tests/*.test.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
